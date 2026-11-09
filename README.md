@@ -16,6 +16,7 @@ Auto lot or auto pass every treasure pool item, once, safely. For FINAL FANTASY 
 | `/yloot off` | Turns it off, so you choose. |
 | `/yloot` | Says which one is on. |
 | `/yloot size 96` | Sets the goblin's width in pixels, from 40 to 200. |
+| `/yloot settings` | Opens or closes the settings panel. |
 
 It's always off when you log in. Only the goblin's place and size are saved.
 
@@ -23,11 +24,15 @@ It's always off when you log in. Only the goblin's place and size are saved.
 
 A small goblin always stays on screen, so you can see at a glance what's on:
 
-- **Gold coin eyes** (they glint): Auto lot is on.
+- **Gold cap and coin eyes:** Auto lot is on.
 - **Red X eyes:** Auto pass is on.
 - **Grey:** off.
 
-Click it to switch: off, then Auto lot, then Auto pass, then off again. Drag it to move it.
+- **Click** it to switch: off, then Auto lot, then Auto pass, then off again.
+- **Drag** it to move it.
+- **Right-click** it to open the settings panel, where you can pick the mode, change the icon size and reset its place.
+
+With Auto lot on, the goblin bobs and tilts a little, and its coin eyes glint.
 
 ## What it never does
 
