@@ -24,7 +24,7 @@ It's always off when you log in. Only the moogle's place and size are saved.
 
 A small moogle always stays on screen, so you can see at a glance what's on:
 
-- **Holding a gold coin, with a gold wing:** Auto lot is on. The wing beats slowly, and each beat leaves a tiny trail of gold dust.
+- **Gold pom-pom, gold wing and a gold coin:** Auto lot is on.
 - **Holding a red X:** Auto pass is on.
 - **Grey:** off.
 

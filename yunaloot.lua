@@ -205,43 +205,6 @@ function G.set(mode)
     msg(({ lot = 'Auto lot: ON', pass = 'Auto pass: ON', off = 'Auto lot / pass: OFF' })[mode]);
 end
 function G.col(r, g, b, a) return imgui.GetColorU32({ r, g, b, a }); end
--- Auto lot on: the moogle's gold wing beats slowly (it turns round its root), and each beat lets fall a tiny trail of
--- gold dust from its tip - kept very small and soft, never tiring to look at (asked 2026-11-09)
-G.WING = { root = { 0.321, 0.537 }, tip = { 0.034, 0.530 }, beat = 2.2, swing = 0.17 };
-G.dust, G.beatn = {}, nil;
-function G.flap(dl, body, wing, cx, cy, hw, hh, w, now)
-    local W_ = G.WING;
-    local ph = (now % W_.beat) / W_.beat;
-    local ang = W_.swing * math.sin(ph * 2 * math.pi);               -- (up, then down: slow and even)
-    local rx, ry = cx - hw + W_.root[1] * hw * 2, cy - hh + W_.root[2] * hh * 2;
-    local ca, sa = math.cos(ang), math.sin(ang);
-    local function at(px_, py_) local dx, dy = px_ - rx, py_ - ry; return { rx + dx * ca - dy * sa, ry + dx * sa + dy * ca }; end
-    dl:AddImageQuad(wing.ptr, at(cx - hw, cy - hh), at(cx + hw, cy - hh), at(cx + hw, cy + hh), at(cx - hw, cy + hh),
-        { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 }, G.col(1, 1, 1, 1));
-    dl:AddImage(body.ptr, { cx - hw, cy - hh }, { cx + hw, cy + hh }, { 0, 0 }, { 1, 1 }, G.col(1, 1, 1, 1));
-    local n = math.floor(now / W_.beat + 0.25);                      -- (a beat ends as the wing comes down: a little dust)
-    if G.beatn ~= nil and n ~= G.beatn then
-        local tip = at(cx - hw + W_.tip[1] * hw * 2, cy - hh + W_.tip[2] * hh * 2);
-        for i = 1, 3 do
-            G.dust[#G.dust + 1] = { x = tip[1] + (i - 2) * w * 0.012, y = tip[2] + w * 0.01 * i, t = now + (i - 1) * 0.06,
-                vx = (-0.04 + 0.03 * i) * w, vy = (0.10 + 0.03 * i) * w, r = w * (0.010 + 0.003 * (i % 2)) };
-        end
-    end
-    G.beatn = n;
-    local keep = {};
-    for _, d in ipairs(G.dust) do
-        local age = now - d.t;
-        if age < 1.2 then
-            keep[#keep + 1] = d;
-            if age >= 0 then
-                local a = (1 - age / 1.2) ^ 1.5 * 0.75;
-                local x, y = d.x + d.vx * age, d.y + d.vy * age + 0.02 * w * age * age;
-                dl:AddCircleFilled({ x, y }, math.max(0.8, d.r), G.col(1.0, 0.84, 0.40, a), 8);
-            end
-        end
-    end
-    G.dust = keep;
-end
 function G.draw()
     local name = '';
     pcall(function() name = AshitaCore:GetMemoryManager():GetParty():GetMemberName(0) or ''; end);
@@ -285,10 +248,7 @@ function G.draw()
         local dl = imgui.GetWindowDrawList();
         local tx = G.texture(Y.mode == 'lot' and 'lot' or (Y.mode == 'pass' and 'pass' or 'off'), w);
         dl:PushClipRect({ 0, 0 }, { sw, sh }, false);                -- (the tooltip may reach past the moogle's box)
-        local body, wing = nil, nil;
-        if Y.mode == 'lot' then body, wing = G.texture('lotbody', w), G.texture('lotwing', w); end
-        if body and wing then G.flap(dl, body, wing, cx, cy, hw, hh, w, now);
-        elseif tx then
+        if tx then                                                   -- (no animation: the wing beat was removed, the user didn't like it)
             local a = (Y.mode == 'off') and 0.85 or 1;
             dl:AddImage(tx.ptr, { cx - hw, cy - hh }, { cx + hw, cy + hh }, { 0, 0 }, { 1, 1 }, G.col(1, 1, 1, a));
         end
