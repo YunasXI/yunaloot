@@ -6,8 +6,11 @@ Auto lot / auto pass for the treasure pool (FINAL FANTASY XI, CatsEyeXI). Runs o
     /yloot pass    every item that drops is passed once
     /yloot off     off: you choose (every login starts here)
     /yloot         says which one is on
+    /yloot settings   the settings panel (or right click the moogle)
+    /yloot size N     the moogle's width, 40 to 200 pixels
 
 Rules it keeps, so nothing it sends is refused by the server (asked by the CatsEyeXI GMs):
+  - nothing while zoning or not logged in;
   - one lot or pass per item, ever - and none at all if one already left this game for that item (yours in the game's
     menu, or another addon's);
   - nothing while you're knocked out;
@@ -88,6 +91,16 @@ function Y.dead()
     return dead;
 end
 
+function Y.in_game()                                                 -- (logged in and not zoning: your character is there)
+    local ok = false;
+    pcall(function()
+        local mm = AshitaCore:GetMemoryManager();
+        local me = mm:GetParty():GetMemberTargetIndex(0) or 0;
+        ok = me ~= 0 and (mm:GetParty():GetMemberName(0) or '') ~= '' and mm:GetEntity():GetRawEntity(me) ~= nil;
+    end);
+    return ok;
+end
+
 function Y.bag_full()
     local full = false;
     pcall(function()
@@ -131,6 +144,7 @@ function Y.act(slot, lot)
     if not it or Y.handled(slot, it) then return false; end
     local key = it.key .. (lot and ':l' or ':p');
     local function note(s) if not Y.warned[key] then Y.warned[key] = true; msg(s); end end
+    if not Y.in_game() then return false, 'wait'; end                -- (zoning or not logged in: the server can't take it - tried again after)
     if Y.dead() then note("You can't lot or pass while you're knocked out."); return false; end
     if lot and Y.bag_full() then note('Not lotted: ' .. item_name(it.id) .. ' - your inventory is full.'); return false, 'full'; end
     if lot and Y.have_rare(it.id) then note('Not lotted: ' .. item_name(it.id) .. ' is Rare and you already have one.'); return false; end
@@ -149,7 +163,7 @@ function Y.tick()
         if not Y.done[it.key] and not Y.handled(slot, it) and os.clock() - Y.seen[it.key] >= Y.WAIT then
             Y.done[it.key] = true;
             local _, why = Y.act(slot, Y.mode == 'lot');
-            if why == 'full' then Y.done[it.key] = nil; end          -- (inventory full: tried again once there's room)
+            if why == 'full' or why == 'wait' then Y.done[it.key] = nil; end   -- (inventory full, or zoning: tried again once it can be)
         end
     end
 end
@@ -496,11 +510,11 @@ ashita.events.register('command', 'yunaloot_cmd', function(e)
     elseif sub == 'size' and tonumber(args[3]) then                  -- (/yloot size 40..200: the moogle's width in pixels)
         G.cfg.size = math.max(40, math.min(200, math.floor(tonumber(args[3]))));
         settings.save();
-        msg('Goblin size: ' .. G.cfg.size);
+        msg('Icon size: ' .. G.cfg.size);
     elseif sub == '' then
-        msg(({ lot = 'Auto lot: ON', pass = 'Auto pass: ON', off = 'Auto lot / pass: OFF' })[Y.mode] .. '  (/yloot lot, /yloot pass, /yloot off)');
+        msg(({ lot = 'Auto lot: ON', pass = 'Auto pass: ON', off = 'Auto lot / pass: OFF' })[Y.mode] .. '  (/yloot lot, pass, off, settings, size 40-200)');
     else
-        msg('/yloot lot, /yloot pass or /yloot off');
+        msg('/yloot lot, /yloot pass, /yloot off, /yloot settings or /yloot size 40-200');
     end
 end);
 

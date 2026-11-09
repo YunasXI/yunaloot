@@ -37,6 +37,7 @@ A small moogle always stays on screen, so you can see at a glance what's on:
 These rules make sure the server never refuses anything YunaLoot sends.
 
 - **Never twice:** one lot or pass per item. If a lot or pass for that item already left your game, YunaLoot sends nothing. That covers one you made in the game's menu and one sent by another addon.
+- **Never while zoning or logged out.** It waits, and acts once you are back in the game.
 - **Never while knocked out.**
 - **Never with a full inventory.** Auto lot waits, and lots the item once you make room, as long as it's still in the pool.
 - **Never a Rare item you already have.** It looks in every bag, wardrobe and Mog House storage.
