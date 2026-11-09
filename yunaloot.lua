@@ -165,7 +165,7 @@ function Y.on_out(e)
 end
 
 ----------------------------------------------------------------------------------------------------
--- The goblin: always on the screen, showing which one is on - coin eyes (they glint) = Auto lot, red X eyes = Auto
+-- The goblin: always on the screen, showing which one is on - gold cap and coin eyes (they glint) = Auto lot, red X eyes = Auto
 -- pass, grey = off. Click it to change (off -> lot -> pass -> off), drag it to move it. /yloot size 40..200.
 ----------------------------------------------------------------------------------------------------
 local imgui = require('imgui');
@@ -310,74 +310,145 @@ function G.draw()
     if G.panel then G.panel_draw(sw, sh, w, h); end
 end
 
--- The look shared by the tooltip and the panel: dark warm glass, a fine gold edge (as the goblin's coins)
-G.GOLD, G.CREAM, G.MUTED = { 0.95, 0.76, 0.36 }, { 0.96, 0.93, 0.86 }, { 0.70, 0.66, 0.58 };
-G.MODECOL = { lot = { 0.97, 0.78, 0.34 }, pass = { 0.95, 0.38, 0.34 }, off = { 0.66, 0.66, 0.68 } };
+-- The look shared by the tooltip and the panel: YunaUI's - warm dark glass, a fine gold edge, glass pills - and its fonts
+-- (Bahnschrift for the title, Segoe UI Semibold / Segoe UI for the rest)
+G.GOLD, G.GOLD2, G.CREAM, G.MUTED = { 0.95, 0.76, 0.36 }, { 1.00, 0.88, 0.58 }, { 0.97, 0.94, 0.88 }, { 0.72, 0.68, 0.60 };
+G.MODECOL = { lot = { 0.97, 0.78, 0.34 }, pass = { 0.93, 0.36, 0.32 }, off = { 0.70, 0.70, 0.72 } };
 G.MODETXT = { lot = 'Auto lot ON', pass = 'Auto pass ON', off = 'Off' };
-function G.c(t, a) return G.col(t[1], t[2], t[3], a or 1); end
-function G.glass(dl, x1, y1, x2, y2)
-    for i = 1, 4 do dl:AddRectFilled({ x1 + i, y1 + i * 1.5 }, { x2 + i, y2 + i * 1.5 }, G.col(0, 0, 0, 0.09), 9 + i); end   -- (a soft shadow)
-    dl:AddRectFilled({ x1, y1 }, { x2, y2 }, G.col(0.075, 0.062, 0.048, 0.94), 9);
-    dl:AddRectFilledMultiColor({ x1 + 6, y1 + 1 }, { x2 - 6, y1 + (y2 - y1) * 0.45 }, G.col(1, 0.85, 0.55, 0.06), G.col(1, 0.85, 0.55, 0.06),
-        G.col(1, 0.85, 0.55, 0), G.col(1, 0.85, 0.55, 0));                -- (a faint warm sheen at the top)
-    dl:AddRect({ x1, y1 }, { x2, y2 }, G.c(G.GOLD, 0.55), 9, 15, 1.2);
+G.F = {};
+function G.load_fonts()
+    local dir = (os.getenv('WINDIR') or 'C:\\Windows') .. '\\Fonts\\';
+    local function add(name, size)
+        local f = io.open(dir .. name, 'rb');
+        if f == nil then return nil; end
+        f:close();
+        local ok, font = pcall(imgui.AddFontFromFileTTF, dir .. name, size);
+        return (ok and font) or nil;
+    end
+    G.F.title = { add('bahnschrift.ttf', 21) or add('seguisb.ttf', 20), 21 };
+    G.F.semi = { add('seguisb.ttf', 16) or add('segoeui.ttf', 16), 16 };
+    G.F.body = { add('segoeui.ttf', 15), 15 };
+    G.F.small = { add('seguisb.ttf', 12) or add('segoeui.ttf', 12), 12 };
 end
+function G.push(k)                                                   -- (a font on; false if it isn't there - the game's font stays)
+    local f = G.F[k];
+    if not f or not f[1] then return false; end
+    local newer = false;
+    pcall(function() newer = f[1].LegacySize ~= nil; end);
+    if newer then return (pcall(imgui.PushFont, f[1], f[2])); end
+    return (pcall(imgui.PushFont, f[1]));
+end
+function G.unpush(on) if on then pcall(imgui.PopFont); end end
+function G.c(t, a) return G.col(t[1], t[2], t[3], a or 1); end
 function G.tw(s) local a, b = imgui.CalcTextSize(s); if type(a) == 'table' then return a.x, a.y; end return a, b; end
-function G.text(dl, x, y, s, col) dl:AddText({ x + 1, y + 1 }, G.col(0, 0, 0, 0.6), s); dl:AddText({ x, y }, col, s); end
+function G.text(dl, x, y, s, col) dl:AddText({ x + 1, y + 1 }, G.col(0, 0, 0, 0.55), s); dl:AddText({ x, y }, col, s); end
+function G.say(dl, k, x, y, s, col)                                  -- (text in one of the fonts; gives its width and height)
+    local on = G.push(k);
+    local w, h = G.tw(s);
+    G.text(dl, x, y, s, col);
+    G.unpush(on);
+    return w, h;
+end
+function G.size(k, s) local on = G.push(k); local w, h = G.tw(s); G.unpush(on); return w, h; end
+function G.caps(dl, x, y, s, col)                                    -- (a small spaced-out label: MODE, ICON SIZE)
+    local on = G.push('small');
+    local cx = x;
+    for ch in s:gmatch('.') do G.text(dl, cx, y, ch, col); cx = cx + G.tw(ch) + 1.6; end
+    G.unpush(on);
+end
+-- Glass: a soft shadow, a see-through warm dark body that's lighter at the top, a bright line along the top edge,
+-- a fine gold edge with a faint light one inside it
+function G.glass(dl, x1, y1, x2, y2, R)
+    R = R or 12;
+    for i = 1, 6 do dl:AddRectFilled({ x1 - i + 2, y1 + i * 1.2 }, { x2 + i - 2, y2 + i * 1.8 }, G.col(0, 0, 0, 0.055), R + i); end
+    dl:AddRectFilled({ x1, y1 }, { x2, y2 }, G.col(0.055, 0.048, 0.042, 0.78), R);
+    local hh = (y2 - y1);
+    for i = 0, 5 do                                                  -- (lighter towards the top, as light through glass)
+        local t = i / 6;
+        dl:AddRectFilled({ x1 + 1, y1 + 1 }, { x2 - 1, y1 + hh * (0.62 - t * 0.5) }, G.col(1, 0.92, 0.78, 0.018), R - 1);
+    end
+    dl:AddLine({ x1 + R, y1 + 1 }, { x2 - R, y1 + 1 }, G.col(1, 0.97, 0.88, 0.32), 1);
+    dl:AddRect({ x1 - 1, y1 - 1 }, { x2 + 1, y2 + 1 }, G.col(0, 0, 0, 0.45), R + 1, 15, 1);
+    dl:AddRect({ x1, y1 }, { x2, y2 }, G.c(G.GOLD, 0.50), R, 15, 1.2);
+    dl:AddRect({ x1 + 1.5, y1 + 1.5 }, { x2 - 1.5, y2 - 1.5 }, G.col(1, 1, 1, 0.05), R - 1.5, 15, 1);
+end
+function G.rule(dl, x1, x2, y)                                       -- (a gold line that fades out at both ends)
+    local m = (x1 + x2) / 2;
+    dl:AddRectFilledMultiColor({ x1, y }, { m, y + 1 }, G.c(G.GOLD, 0), G.c(G.GOLD, 0.55), G.c(G.GOLD, 0.55), G.c(G.GOLD, 0));
+    dl:AddRectFilledMultiColor({ m, y }, { x2, y + 1 }, G.c(G.GOLD, 0.55), G.c(G.GOLD, 0), G.c(G.GOLD, 0), G.c(G.GOLD, 0.55));
+end
 -- The tooltip: YunaLoot and what's on, then what the mouse does
 function G.tip(dl, sw, sh)
     local mx, my = imgui.GetMousePos();
     if type(mx) == 'table' then mx, my = mx.x, mx.y; end
     local st = G.MODETXT[Y.mode] or 'Off';
-    local rows = { { 'Click', 'change' }, { 'Drag', 'move' }, { 'Right click', 'settings' } };
-    local tw1 = G.tw('YunaLoot  ') + G.tw(st);
-    local lw = 0;
-    for _, r in ipairs(rows) do lw = math.max(lw, G.tw(r[1])); end
-    local _, lh = G.tw('Ag');
-    local W = math.max(tw1, lw + 10 + G.tw('settings')) + 24;
-    local H = 14 + lh + 10 + #rows * (lh + 3) + 8;
-    local x, y = mx + 18, my + 20;
-    if x + W > sw - 4 then x = mx - W - 10; end
-    if y + H > sh - 4 then y = my - H - 10; end
-    G.glass(dl, x, y, x + W, y + H);
-    G.text(dl, x + 12, y + 9, 'YunaLoot', G.c(G.GOLD));
-    G.text(dl, x + 12 + G.tw('YunaLoot  '), y + 9, st, G.c(G.MODECOL[Y.mode] or G.MUTED));
-    dl:AddLine({ x + 12, y + 14 + lh }, { x + W - 12, y + 14 + lh }, G.c(G.GOLD, 0.30), 1);
-    local ry = y + 14 + lh + 8;
+    local rows = { { 'Click', 'change mode' }, { 'Drag', 'move' }, { 'Right click', 'settings' } };
+    local tw_, th_ = G.size('title', 'YunaLoot');
+    local sw_ = G.size('semi', st);
+    local lw, rw, lh = 0, 0, 0;
     for _, r in ipairs(rows) do
-        G.text(dl, x + 12, ry, r[1], G.c(G.CREAM));
-        G.text(dl, x + 12 + lw + 10, ry, r[2], G.c(G.MUTED));
-        ry = ry + lh + 3;
+        local a, h_ = G.size('semi', r[1]); local b = G.size('body', r[2]);
+        lw, rw, lh = math.max(lw, a), math.max(rw, b), math.max(lh, h_);
+    end
+    local W = math.max(tw_ + 14 + sw_, lw + 14 + rw) + 32;
+    local H = 12 + th_ + 12 + #rows * (lh + 4) + 10;
+    local x, y = mx + 20, my + 22;
+    if x + W > sw - 4 then x = mx - W - 12; end
+    if y + H > sh - 4 then y = my - H - 12; end
+    G.glass(dl, x, y, x + W, y + H, 11);
+    G.say(dl, 'title', x + 16, y + 11, 'YunaLoot', G.c(G.GOLD2));
+    local dot = G.MODECOL[Y.mode] or G.MUTED;                          -- (what's on: a lit dot and its name)
+    local _, sh_ = G.size('semi', st);
+    local dx, dy = x + W - 16 - sw_ - 12, y + 11 + th_ / 2;
+    dl:AddCircleFilled({ dx, dy }, 6, G.c(dot, 0.25), 16);
+    dl:AddCircleFilled({ dx, dy }, 3.5, G.c(dot), 16);
+    G.say(dl, 'semi', x + W - 16 - sw_, y + 11 + (th_ - sh_) / 2, st, G.c(dot));
+    G.rule(dl, x + 12, x + W - 12, y + 12 + th_ + 5);
+    local ry = y + 12 + th_ + 12;
+    for _, r in ipairs(rows) do
+        G.say(dl, 'semi', x + 16, ry, r[1], G.c(G.CREAM));
+        G.say(dl, 'body', x + 16 + lw + 14, ry + 1, r[2], G.c(G.MUTED));
+        ry = ry + lh + 4;
     end
 end
--- A pill button drawn in the panel's look. kind: nil (plain) or a colour (picked)
+-- A glass pill button. pick: its colour when it's the one picked (nil: plain)
 function G.pill(dl, id, x, y, w, h, label, pick)
     imgui.SetCursorScreenPos({ x, y });
     imgui.InvisibleButton(id, { w, h });
     local hov, clk = imgui.IsItemHovered(), imgui.IsItemClicked(0);
+    local r = h / 2;
     if pick then
-        dl:AddRectFilled({ x, y }, { x + w, y + h }, G.c(pick, hov and 1 or 0.92), h / 2);
+        dl:AddRectFilled({ x, y + 2 }, { x + w, y + h + 2 }, G.c(pick, 0.18), r);   -- (its light under it)
+        dl:AddRectFilled({ x, y }, { x + w, y + h }, G.c(pick, hov and 1 or 0.92), r);
+        dl:AddRectFilled({ x + 2, y + 1 }, { x + w - 2, y + h * 0.5 }, G.col(1, 1, 1, 0.22), r - 1);
+        dl:AddRect({ x, y }, { x + w, y + h }, G.col(1, 1, 1, 0.35), r, 15, 1);
     else
-        dl:AddRectFilled({ x, y }, { x + w, y + h }, G.col(1, 1, 1, hov and 0.11 or 0.06), h / 2);
-        dl:AddRect({ x, y }, { x + w, y + h }, G.col(1, 1, 1, hov and 0.22 or 0.12), h / 2, 15, 1);
+        dl:AddRectFilled({ x, y }, { x + w, y + h }, G.col(1, 1, 1, hov and 0.09 or 0.045), r);
+        dl:AddRectFilled({ x + 2, y + 1 }, { x + w - 2, y + h * 0.5 }, G.col(1, 1, 1, hov and 0.06 or 0.03), r - 1);
+        dl:AddRect({ x, y }, { x + w, y + h }, G.col(1, 1, 1, hov and 0.24 or 0.12), r, 15, 1);
     end
+    local on = G.push('semi');
     local tw, th = G.tw(label);
-    local tc = pick and G.col(0.10, 0.07, 0.04, 1) or G.c(hov and G.CREAM or G.MUTED);
+    local tc = pick and G.col(0.12, 0.08, 0.04, 1) or G.c(hov and G.CREAM or G.MUTED);
     dl:AddText({ x + (w - tw) / 2, y + (h - th) / 2 }, tc, label);
+    G.unpush(on);
     return clk;
 end
 -- The settings panel (right click the goblin): which mode, the goblin's size, its place back to start
 function G.panel_draw(sw, sh, gw, gh)
     local cfg = G.cfg;
-    local _, lh = G.tw('Ag');                                         -- (sized from the game's font: every label fits)
-    local bw = math.max(G.tw('Off'), G.tw('Auto lot'), G.tw('Auto pass')) + 24;
-    local PW = math.max(28 + 3 * bw + 12, G.tw('YunaLoot  settings') + 70);
-    local PH = 10 + lh + 8 + 10 + lh + 6 + (lh + 8) + 14 + lh + 14 + 16 + (lh + 6) + 14;
-    local px = cfg.x + gw + 12;
-    if px + PW > sw - 6 then px = cfg.x - PW - 12; end
+    local tw_, th_ = G.size('title', 'YunaLoot');
+    local _, lh = G.size('semi', 'Ag');
+    local _, ch = G.size('small', 'MODE');
+    local bw = math.max(G.size('semi', 'Off'), G.size('semi', 'Auto lot'), G.size('semi', 'Auto pass')) + 30;
+    local P = 18;
+    local PW = math.max(2 * P + 3 * bw + 16, tw_ + 140);
+    local PH = P + th_ + 14 + ch + 8 + (lh + 12) + 18 + ch + 8 + 22 + 18 + (lh + 8) + P;
+    local px = cfg.x + gw + 14;
+    if px + PW > sw - 6 then px = cfg.x - PW - 14; end
     local py = math.max(6, math.min(sh - PH - 6, cfg.y + gh / 2 - PH / 2));
-    imgui.SetNextWindowPos({ px, py }, ImGuiCond_Always);
-    imgui.SetNextWindowSize({ PW, PH }, ImGuiCond_Always);
+    imgui.SetNextWindowPos({ px - 8, py - 8 }, ImGuiCond_Always);
+    imgui.SetNextWindowSize({ PW + 16, PH + 20 }, ImGuiCond_Always);
     imgui.PushStyleVar(ImGuiStyleVar_WindowPadding, { 0, 0 });
     imgui.PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
     local flags = bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_NoBackground, ImGuiWindowFlags_NoSavedSettings,
@@ -385,36 +456,41 @@ function G.panel_draw(sw, sh, gw, gh)
     if imgui.Begin('##yunaloot_panel', true, flags) then
         local dl = imgui.GetWindowDrawList();
         local x, y = px, py;
-        G.glass(dl, x, y, x + PW, y + PH);
-        G.text(dl, x + 14, y + 11, 'YunaLoot', G.c(G.GOLD));
-        G.text(dl, x + 14 + G.tw('YunaLoot  '), y + 11, 'settings', G.c(G.MUTED));
-        imgui.SetCursorScreenPos({ x + PW - 30, y + 7 });            -- (close: a small x)
-        imgui.InvisibleButton('##yl_close', { 22, 22 });
-        local ch = imgui.IsItemHovered();
+        G.glass(dl, x, y, x + PW, y + PH, 14);
+        G.say(dl, 'title', x + P, y + P - 2, 'YunaLoot', G.c(G.GOLD2));
+        local _, sh2 = G.size('body', 'settings');
+        G.say(dl, 'body', x + P + tw_ + 10, y + P - 2 + (th_ - sh2) / 2 + 1, 'settings', G.c(G.MUTED));
+        imgui.SetCursorScreenPos({ x + PW - 36, y + 10 });            -- (close: a small x in a glass circle)
+        imgui.InvisibleButton('##yl_close', { 26, 26 });
+        local chv = imgui.IsItemHovered();
         if imgui.IsItemClicked(0) then G.panel = false; end
-        local qx, qy, qr = x + PW - 19, y + 18, 4.5;
-        dl:AddLine({ qx - qr, qy - qr }, { qx + qr, qy + qr }, G.c(ch and G.CREAM or G.MUTED), 1.6);
-        dl:AddLine({ qx - qr, qy + qr }, { qx + qr, qy - qr }, G.c(ch and G.CREAM or G.MUTED), 1.6);
-        local ly = y + 16 + lh;
-        dl:AddLine({ x + 14, ly }, { x + PW - 14, ly }, G.c(G.GOLD, 0.30), 1);
-        -- Mode
-        G.text(dl, x + 14, ly + 10, 'Mode', G.c(G.CREAM));
-        bw = (PW - 28 - 12) / 3;
-        local by = ly + 10 + lh + 6;
+        local qx, qy, qr = x + PW - 23, y + 23, 4.2;
+        dl:AddCircleFilled({ qx, qy }, 11, G.col(1, 1, 1, chv and 0.10 or 0.04), 20);
+        dl:AddCircle({ qx, qy }, 11, G.col(1, 1, 1, chv and 0.22 or 0.10), 20, 1);
+        dl:AddLine({ qx - qr, qy - qr }, { qx + qr, qy + qr }, G.c(chv and G.CREAM or G.MUTED), 1.6);
+        dl:AddLine({ qx - qr, qy + qr }, { qx + qr, qy - qr }, G.c(chv and G.CREAM or G.MUTED), 1.6);
+        local ly = y + P + th_ + 6;
+        G.rule(dl, x + 12, x + PW - 12, ly);
+        -- MODE
+        local my_ = ly + 14;
+        G.caps(dl, x + P, my_, 'MODE', G.c(G.GOLD, 0.85));
+        bw = (PW - 2 * P - 16) / 3;
+        local by = my_ + ch + 8;
         for i, m in ipairs({ { 'off', 'Off' }, { 'lot', 'Auto lot' }, { 'pass', 'Auto pass' } }) do
-            if G.pill(dl, '##yl_m' .. m[1], x + 14 + (i - 1) * (bw + 6), by, bw, lh + 8, m[2], (Y.mode == m[1]) and G.MODECOL[m[1]] or nil) and Y.mode ~= m[1] then
+            if G.pill(dl, '##yl_m' .. m[1], x + P + (i - 1) * (bw + 8), by, bw, lh + 12, m[2], (Y.mode == m[1]) and G.MODECOL[m[1]] or nil) and Y.mode ~= m[1] then
                 G.set(m[1]);
             end
         end
-        -- Icon size: a slider in the same look
-        local sy = by + lh + 8 + 14;
+        -- ICON SIZE: a slider in the same glass
+        local sy = by + lh + 12 + 18;
         local size = math.max(40, math.min(200, tonumber(cfg.size) or 96));
-        G.text(dl, x + 14, sy, 'Icon size', G.c(G.CREAM));
+        G.caps(dl, x + P, sy, 'ICON SIZE', G.c(G.GOLD, 0.85));
         local vs = size .. ' px';
-        G.text(dl, x + PW - 14 - G.tw(vs), sy, vs, G.c(G.GOLD));
-        local tx1, tx2, ty = x + 20, x + PW - 20, sy + lh + 14;
-        imgui.SetCursorScreenPos({ tx1 - 8, ty - 10 });
-        imgui.InvisibleButton('##yl_size', { tx2 - tx1 + 16, 20 });
+        local vw = G.size('semi', vs);
+        G.say(dl, 'semi', x + PW - P - vw, sy - 3, vs, G.c(G.CREAM));
+        local tx1, tx2, ty = x + P + 6, x + PW - P - 6, sy + ch + 8 + 11;
+        imgui.SetCursorScreenPos({ tx1 - 10, ty - 12 });
+        imgui.InvisibleButton('##yl_size', { tx2 - tx1 + 20, 24 });
         local sh_, sa_ = imgui.IsItemHovered(), imgui.IsItemActive();
         if sa_ then
             local mx = imgui.GetMousePos();
@@ -423,14 +499,18 @@ function G.panel_draw(sw, sh, gw, gh)
             size = cfg.size;
         end
         if imgui.IsItemDeactivated() then settings.save(); end
-        local f = (size - 40) / 160;
-        local kx = tx1 + f * (tx2 - tx1);
-        dl:AddRectFilled({ tx1, ty - 2 }, { tx2, ty + 2 }, G.col(1, 1, 1, 0.10), 2);
-        dl:AddRectFilled({ tx1, ty - 2 }, { kx, ty + 2 }, G.c(G.GOLD, 0.85), 2);
-        dl:AddCircleFilled({ kx, ty }, (sh_ or sa_) and 8 or 7, G.c(G.GOLD), 20);
-        dl:AddCircle({ kx, ty }, (sh_ or sa_) and 8 or 7, G.col(0.25, 0.16, 0.05, 0.9), 20, 1.5);
-        -- Its place back to the start
-        if G.pill(dl, '##yl_reset', x + 14, ty + 16, G.tw('Reset place') + 28, lh + 6, 'Reset place') then
+        local kx = tx1 + (size - 40) / 160 * (tx2 - tx1);
+        dl:AddRectFilled({ tx1 - 3, ty - 4 }, { tx2 + 3, ty + 4 }, G.col(0, 0, 0, 0.45), 4);   -- (an inset glass track)
+        dl:AddRect({ tx1 - 3, ty - 4 }, { tx2 + 3, ty + 4 }, G.col(1, 1, 1, 0.08), 4, 15, 1);
+        dl:AddRectFilledMultiColor({ tx1, ty - 2 }, { kx, ty + 2 }, G.c(G.GOLD, 0.55), G.c(G.GOLD2, 1), G.c(G.GOLD2, 1), G.c(G.GOLD, 0.55));
+        local kr = (sh_ or sa_) and 9 or 8;
+        dl:AddCircleFilled({ kx, ty + 1.5 }, kr + 1, G.col(0, 0, 0, 0.35), 24);
+        dl:AddCircleFilled({ kx, ty }, kr, G.c(G.GOLD), 24);
+        dl:AddCircleFilled({ kx - kr * 0.25, ty - kr * 0.3 }, kr * 0.5, G.col(1, 1, 1, 0.35), 16);
+        dl:AddCircle({ kx, ty }, kr, G.col(0.30, 0.19, 0.06, 0.9), 24, 1.4);
+        -- its place back to the start
+        local rw = G.size('semi', 'Reset place') + 32;
+        if G.pill(dl, '##yl_reset', x + P, ty + 18, rw, lh + 8, 'Reset place') then
             cfg.x, cfg.y = -1, -1;
             settings.save();
         end
@@ -438,6 +518,8 @@ function G.panel_draw(sw, sh, gw, gh)
     imgui.End();
     imgui.PopStyleVar(2);
 end
+
+ashita.events.register('load', 'yunaloot_load', function() pcall(G.load_fonts); end);
 
 ashita.events.register('d3d_present', 'yunaloot_tick', function()
     pcall(Y.tick);
