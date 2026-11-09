@@ -279,16 +279,33 @@ function G.draw()
         local hw, hh = w / 2 * k, h / 2 * k;
         local dl = imgui.GetWindowDrawList();
         local tx = G.texture(Y.mode == 'lot' and 'lot' or (Y.mode == 'pass' and 'pass' or 'off'), w);
+        local lit = Y.mode == 'lot';
+        local br = 0.5 + 0.5 * math.sin(now * 2 * math.pi / 1.8);   -- (Auto lot: the gold breathes, every 1.8 s)
+        dl:PushClipRect({ 0, 0 }, { sw, sh }, false);                -- (the glow may reach past the goblin's box)
+        if lit then                                                  -- (a soft gold aura behind the goblin)
+            for j = 1, 8 do
+                dl:AddCircleFilled({ cx, cy + hh * 0.02 }, hw * (1.02 - j * 0.07), G.col(1.0, 0.78, 0.25, (0.035 + 0.030 * br) * j / 4), 40);
+            end
+        end
         if tx then
             local a = (Y.mode == 'off') and 0.85 or 1;
             dl:AddImage(tx.ptr, { cx - hw, cy - hh }, { cx + hw, cy + hh }, { 0, 0 }, { 1, 1 }, G.col(1, 1, 1, a));
         end
-        if Y.mode == 'lot' then                                      -- (the coin eyes glint, one after the other, every 2.8 s)
-            local t = now % 2.8;
+        if lit then
+            for _, e in ipairs(G.EYES) do                            -- (the coins lit: a warm light round each, and the coin itself brighter)
+                local ex, ey, er = cx - hw + e[1] * hw * 2, cy - hh + e[2] * hh * 2, e[3] * hw * 2;
+                for j = 1, 9 do
+                    dl:AddCircle({ ex, ey }, er + j * er * 0.10, G.col(1.0, 0.84, 0.32, (0.38 + 0.32 * br) * (1 - j / 10) ^ 1.3), 32, er * 0.12);
+                end
+                dl:AddCircleFilled({ ex, ey }, er * 0.98, G.col(1.0, 0.92, 0.50, 0.22 + 0.20 * br), 32);
+                dl:AddCircleFilled({ ex - er * 0.25, ey - er * 0.25 }, er * 0.45, G.col(1.0, 0.99, 0.85, 0.14 + 0.16 * br), 24);
+            end
+            local t = now % 2.8;                                     -- (and they glint, one after the other, every 2.8 s)
             for i, e in ipairs(G.EYES) do
                 G.glint(dl, cx - hw + e[1] * hw * 2, cy - hh + e[2] * hh * 2, e[3] * hw * 2, t - (i - 1) * 0.18);
             end
         end
+        dl:PopClipRect();
         if hov then
             imgui.SetTooltip(({ lot = 'YunaLoot: Auto lot ON', pass = 'YunaLoot: Auto pass ON', off = 'YunaLoot: off' })[Y.mode]
                 .. '\nClick: change   Drag: move');
