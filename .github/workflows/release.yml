@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version part to increment
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: version
+        run: |
+          latest=$(git tag --list '[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          latest=${latest:-0.0.0}
+          IFS=. read -r major minor patch <<< "$latest"
+          case "${{ inputs.bump }}" in
+            major) major=$((major+1)); minor=0; patch=0 ;;
+            minor) minor=$((minor+1)); patch=0 ;;
+            *)     patch=$((patch+1)) ;;
+          esac
+          if [ "$latest" = "0.0.0" ]; then major=1; minor=0; patch=0; fi
+          echo "previous=$latest" >> "$GITHUB_OUTPUT"
+          echo "version=$major.$minor.$patch" >> "$GITHUB_OUTPUT"
+
+      - name: Package addon
+        run: |
+          # The repo is the addon as installed: addons\ashita\yunaloot
+          mkdir -p dist/yunaloot
+          cp yunaloot.lua README.md LICENSE dist/yunaloot/
+          cp -r images dist/yunaloot/
+          # The version shown in the addon list
+          sed -i "s/^addon.version *= *'[^']*';/addon.version = '${{ steps.version.outputs.version }}';/" dist/yunaloot/yunaloot.lua
+          (cd dist && zip -r "yunaloot-${{ steps.version.outputs.version }}.zip" yunaloot)
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          prev="${{ steps.version.outputs.previous }}"
+          if [ "$prev" != "0.0.0" ]; then
+            notes=$(git log --no-merges --format='- %s' "$prev"..HEAD)
+          else
+            notes=$(printf '%s\n' \
+              "First release of YunaLoot: auto lot or auto pass every treasure pool item, once, safely." \
+              "" \
+              "- /yloot lot, /yloot pass, /yloot off (always off when you log in)" \
+              "- A small moogle on screen shows what's on: click to switch, drag to move, right click for settings" \
+              "- Never twice on the same item, never while zoning or knocked out, never with a full inventory, never a Rare item you already have" \
+              "" \
+              "Install: unzip into addons\\ashita (on VanaCore: Vanacore\\addons\\ashita), then /addon load yunaloot.")
+          fi
+          notes=${notes:-"- Maintenance build"}
+          gh release create "$v" "dist/yunaloot-$v.zip" --title "v$v" --target "$GITHUB_SHA" --notes "$notes"
