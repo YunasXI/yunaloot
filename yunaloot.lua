@@ -205,34 +205,42 @@ function G.set(mode)
     msg(({ lot = 'Auto lot: ON', pass = 'Auto pass: ON', off = 'Auto lot / pass: OFF' })[mode]);
 end
 function G.col(r, g, b, a) return imgui.GetColorU32({ r, g, b, a }); end
--- Auto lot's coin (centre and radius, as parts of the picture's width / height) and the stars round it:
--- { angle, how far out (coin radii), size (coin radii), its moment }
-G.COIN = { 0.632, 0.762, 0.155 };
-G.STARS = { { -60, 1.35, 0.70, 0.00 }, { 200, 1.40, 0.55, 0.55 }, { 20, 1.45, 0.50, 1.05 }, { 130, 1.35, 0.45, 1.35 } };
--- A small four-point star, gold-white
-function G.star(dl, x, y, L, a)
-    local w_ = L * 0.20;
-    local c = G.col(1, 0.95, 0.70, 0.95 * a);
-    dl:AddTriangleFilled({ x, y - L }, { x + w_, y }, { x - w_, y }, c);
-    dl:AddTriangleFilled({ x, y + L }, { x - w_, y }, { x + w_, y }, c);
-    dl:AddTriangleFilled({ x - L, y }, { x, y - w_ }, { x, y + w_ }, c);
-    dl:AddTriangleFilled({ x + L, y }, { x, y + w_ }, { x, y - w_ }, c);
-    dl:AddCircleFilled({ x, y }, w_ * 1.5, G.col(1, 1, 1, 0.95 * a), 10);
-end
--- A bright band sweeping across the coin, kept inside it (t: seconds into its 2.4 s turn; it runs in the first 0.6)
-function G.shine(dl, cx, cy, r, t)
-    if t > 0.6 then return; end
-    local s2 = 0.70710678;
-    local p = -1.3 * r + (t / 0.6) * 2.6 * r;
-    local w = r * 0.38;
-    for k = -w, w, 1 do
-        local s = p + k;
-        if math.abs(s) < r then
-            local h = math.sqrt(r * r - s * s) * 0.95;
-            local mx, my = cx + s * s2, cy - s * s2;
-            dl:AddLine({ mx - h * s2, my - h * s2 }, { mx + h * s2, my + h * s2 }, G.col(1, 0.98, 0.84, 0.75 * (1 - math.abs(k) / w) ^ 1.4), 1.2);
+-- Auto lot on: the moogle's gold wing beats slowly (it turns round its root), and each beat lets fall a tiny trail of
+-- gold dust from its tip - kept very small and soft, never tiring to look at (asked 2026-11-09)
+G.WING = { root = { 0.321, 0.537 }, tip = { 0.034, 0.530 }, beat = 2.2, swing = 0.17 };
+G.dust, G.beatn = {}, nil;
+function G.flap(dl, body, wing, cx, cy, hw, hh, w, now)
+    local W_ = G.WING;
+    local ph = (now % W_.beat) / W_.beat;
+    local ang = W_.swing * math.sin(ph * 2 * math.pi);               -- (up, then down: slow and even)
+    local rx, ry = cx - hw + W_.root[1] * hw * 2, cy - hh + W_.root[2] * hh * 2;
+    local ca, sa = math.cos(ang), math.sin(ang);
+    local function at(px_, py_) local dx, dy = px_ - rx, py_ - ry; return { rx + dx * ca - dy * sa, ry + dx * sa + dy * ca }; end
+    dl:AddImageQuad(wing.ptr, at(cx - hw, cy - hh), at(cx + hw, cy - hh), at(cx + hw, cy + hh), at(cx - hw, cy + hh),
+        { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 }, G.col(1, 1, 1, 1));
+    dl:AddImage(body.ptr, { cx - hw, cy - hh }, { cx + hw, cy + hh }, { 0, 0 }, { 1, 1 }, G.col(1, 1, 1, 1));
+    local n = math.floor(now / W_.beat + 0.25);                      -- (a beat ends as the wing comes down: a little dust)
+    if G.beatn ~= nil and n ~= G.beatn then
+        local tip = at(cx - hw + W_.tip[1] * hw * 2, cy - hh + W_.tip[2] * hh * 2);
+        for i = 1, 3 do
+            G.dust[#G.dust + 1] = { x = tip[1] + (i - 2) * w * 0.012, y = tip[2] + w * 0.01 * i, t = now + (i - 1) * 0.06,
+                vx = (-0.04 + 0.03 * i) * w, vy = (0.10 + 0.03 * i) * w, r = w * (0.010 + 0.003 * (i % 2)) };
         end
     end
+    G.beatn = n;
+    local keep = {};
+    for _, d in ipairs(G.dust) do
+        local age = now - d.t;
+        if age < 1.2 then
+            keep[#keep + 1] = d;
+            if age >= 0 then
+                local a = (1 - age / 1.2) ^ 1.5 * 0.75;
+                local x, y = d.x + d.vx * age, d.y + d.vy * age + 0.02 * w * age * age;
+                dl:AddCircleFilled({ x, y }, math.max(0.8, d.r), G.col(1.0, 0.84, 0.40, a), 8);
+            end
+        end
+    end
+    G.dust = keep;
 end
 function G.draw()
     local name = '';
@@ -277,21 +285,12 @@ function G.draw()
         local dl = imgui.GetWindowDrawList();
         local tx = G.texture(Y.mode == 'lot' and 'lot' or (Y.mode == 'pass' and 'pass' or 'off'), w);
         dl:PushClipRect({ 0, 0 }, { sw, sh }, false);                -- (the tooltip may reach past the moogle's box)
-        if tx then
+        local body, wing = nil, nil;
+        if Y.mode == 'lot' then body, wing = G.texture('lotbody', w), G.texture('lotwing', w); end
+        if body and wing then G.flap(dl, body, wing, cx, cy, hw, hh, w, now);
+        elseif tx then
             local a = (Y.mode == 'off') and 0.85 or 1;
             dl:AddImage(tx.ptr, { cx - hw, cy - hh }, { cx + hw, cy + hh }, { 0, 0 }, { 1, 1 }, G.col(1, 1, 1, a));
-        end
-        if Y.mode == 'lot' then                                      -- (Auto lot on: the coin shines and little gold stars twinkle round it - no glow,
-            local ccx, ccy, cr = cx - hw + G.COIN[1] * hw * 2, cy - hh + G.COIN[2] * hh * 2, G.COIN[3] * hw * 2   --  the user didn't like one)
-            G.shine(dl, ccx, ccy, cr, now % 2.4);
-            for i, s in ipairs(G.STARS) do
-                local t = ((now + s[4]) % 1.7) / 1.7;
-                local al = (t < 0.5) and math.sin(t / 0.5 * math.pi) or 0;   -- (each one: a quick twinkle, then a rest)
-                if al > 0 then
-                    local ang = math.rad(s[1]);
-                    G.star(dl, ccx + math.cos(ang) * cr * s[2], ccy + math.sin(ang) * cr * s[2], cr * s[3] * (0.5 + 0.5 * al), al);
-                end
-            end
         end
         if imgui.IsItemClicked(1) then                               -- (right click: the settings panel, or closed again)
             G.panel = not G.panel;
