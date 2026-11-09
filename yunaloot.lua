@@ -205,6 +205,35 @@ function G.set(mode)
     msg(({ lot = 'Auto lot: ON', pass = 'Auto pass: ON', off = 'Auto lot / pass: OFF' })[mode]);
 end
 function G.col(r, g, b, a) return imgui.GetColorU32({ r, g, b, a }); end
+-- Auto lot's coin (centre and radius, as parts of the picture's width / height) and the stars round it:
+-- { angle, how far out (coin radii), size (coin radii), its moment }
+G.COIN = { 0.632, 0.762, 0.155 };
+G.STARS = { { -60, 1.35, 0.70, 0.00 }, { 200, 1.40, 0.55, 0.55 }, { 20, 1.45, 0.50, 1.05 }, { 130, 1.35, 0.45, 1.35 } };
+-- A small four-point star, gold-white
+function G.star(dl, x, y, L, a)
+    local w_ = L * 0.20;
+    local c = G.col(1, 0.95, 0.70, 0.95 * a);
+    dl:AddTriangleFilled({ x, y - L }, { x + w_, y }, { x - w_, y }, c);
+    dl:AddTriangleFilled({ x, y + L }, { x - w_, y }, { x + w_, y }, c);
+    dl:AddTriangleFilled({ x - L, y }, { x, y - w_ }, { x, y + w_ }, c);
+    dl:AddTriangleFilled({ x + L, y }, { x, y + w_ }, { x, y - w_ }, c);
+    dl:AddCircleFilled({ x, y }, w_ * 1.5, G.col(1, 1, 1, 0.95 * a), 10);
+end
+-- A bright band sweeping across the coin, kept inside it (t: seconds into its 2.4 s turn; it runs in the first 0.6)
+function G.shine(dl, cx, cy, r, t)
+    if t > 0.6 then return; end
+    local s2 = 0.70710678;
+    local p = -1.3 * r + (t / 0.6) * 2.6 * r;
+    local w = r * 0.38;
+    for k = -w, w, 1 do
+        local s = p + k;
+        if math.abs(s) < r then
+            local h = math.sqrt(r * r - s * s) * 0.95;
+            local mx, my = cx + s * s2, cy - s * s2;
+            dl:AddLine({ mx - h * s2, my - h * s2 }, { mx + h * s2, my + h * s2 }, G.col(1, 0.98, 0.84, 0.75 * (1 - math.abs(k) / w) ^ 1.4), 1.2);
+        end
+    end
+end
 function G.draw()
     local name = '';
     pcall(function() name = AshitaCore:GetMemoryManager():GetParty():GetMemberName(0) or ''; end);
@@ -248,9 +277,21 @@ function G.draw()
         local dl = imgui.GetWindowDrawList();
         local tx = G.texture(Y.mode == 'lot' and 'lot' or (Y.mode == 'pass' and 'pass' or 'off'), w);
         dl:PushClipRect({ 0, 0 }, { sw, sh }, false);                -- (the tooltip may reach past the moogle's box)
-        if tx then                                                   -- (no animation for now - the user will pick one later, 2026-11-09)
+        if tx then
             local a = (Y.mode == 'off') and 0.85 or 1;
             dl:AddImage(tx.ptr, { cx - hw, cy - hh }, { cx + hw, cy + hh }, { 0, 0 }, { 1, 1 }, G.col(1, 1, 1, a));
+        end
+        if Y.mode == 'lot' then                                      -- (Auto lot on: the coin shines and little gold stars twinkle round it - no glow,
+            local ccx, ccy, cr = cx - hw + G.COIN[1] * hw * 2, cy - hh + G.COIN[2] * hh * 2, G.COIN[3] * hw * 2   --  the user didn't like one)
+            G.shine(dl, ccx, ccy, cr, now % 2.4);
+            for i, s in ipairs(G.STARS) do
+                local t = ((now + s[4]) % 1.7) / 1.7;
+                local al = (t < 0.5) and math.sin(t / 0.5 * math.pi) or 0;   -- (each one: a quick twinkle, then a rest)
+                if al > 0 then
+                    local ang = math.rad(s[1]);
+                    G.star(dl, ccx + math.cos(ang) * cr * s[2], ccy + math.sin(ang) * cr * s[2], cr * s[3] * (0.5 + 0.5 * al), al);
+                end
+            end
         end
         if imgui.IsItemClicked(1) then                               -- (right click: the settings panel, or closed again)
             G.panel = not G.panel;
@@ -343,7 +384,7 @@ function G.tip(dl, sw, sh)
         local a, h_ = G.size('semi', r[1]); local b = G.size('body', r[2]);
         lw, rw, lh = math.max(lw, a), math.max(rw, b), math.max(lh, h_);
     end
-    local W = math.max(tw_ + 14 + sw_, lw + 14 + rw) + 32;
+    local W = math.max(tw_ + 40 + sw_, lw + 14 + rw) + 32;          -- (room for the lit dot between the title and what's on)
     local H = 12 + th_ + 12 + #rows * (lh + 4) + 10;
     local x, y = mx + 20, my + 22;
     if x + W > sw - 4 then x = mx - W - 12; end

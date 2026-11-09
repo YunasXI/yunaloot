@@ -24,7 +24,7 @@ It's always off when you log in. Only the moogle's place and size are saved.
 
 A small moogle always stays on screen, so you can see at a glance what's on:
 
-- **Holding a gold coin:** Auto lot is on.
+- **Holding a gold coin:** Auto lot is on. The coin shines and little gold stars twinkle around it.
 - **Holding a red X:** Auto pass is on.
 - **Grey:** off.
 
