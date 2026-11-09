@@ -165,8 +165,8 @@ function Y.on_out(e)
 end
 
 ----------------------------------------------------------------------------------------------------
--- The goblin: always on the screen, showing which one is on - gold cap and coin eyes (they glint) = Auto lot, red X eyes = Auto
--- pass, grey = off. Click it to change (off -> lot -> pass -> off), drag it to move it. /yloot size 40..200.
+-- The moogle: always on the screen, showing which one is on - holding a gold coin = Auto lot, a red X = Auto pass,
+-- grey = off. Click it to change (off -> lot -> pass -> off), drag it to move it. /yloot size 40..200.
 ----------------------------------------------------------------------------------------------------
 local imgui = require('imgui');
 local settings = require('settings');
@@ -176,9 +176,7 @@ local G = {
     cfg = settings.load(T{ x = -1, y = -1, size = 96 }),
     tex = {},
     pop = 0,           -- when it last changed: a little bounce
-    W = 242, H = 214,  -- the pictures' size (images\goblin_*.png)
-    -- the coin eyes on the Auto lot goblin: centre and radius, as parts of the picture's width / height
-    EYES = { { 0.4624, 0.4381, 0.076 }, { 0.6793, 0.4584, 0.070 } },
+    W = 148, H = 164,  -- the pictures' size (images\moogle_*.png)
 };
 function G.texture(mode, size)
     local file = mode;                                               -- (the copy made for that size: sharp, never shrunk much by the GPU)
@@ -187,7 +185,7 @@ function G.texture(mode, size)
     if G.tex[name] ~= nil then return G.tex[name] or nil; end
     G.tex[name] = false;
     pcall(function()
-        local f = io.open(addon.path .. '\\images\\goblin_' .. name .. '.png', 'rb');
+        local f = io.open(addon.path .. '\\images\\moogle_' .. name .. '.png', 'rb');
         if f == nil then return; end
         local data = f:read('*a');
         f:close();
@@ -207,36 +205,6 @@ function G.set(mode)
     msg(({ lot = 'Auto lot: ON', pass = 'Auto pass: ON', off = 'Auto lot / pass: OFF' })[mode]);
 end
 function G.col(r, g, b, a) return imgui.GetColorU32({ r, g, b, a }); end
--- A coin's glint: a bright band sweeping across it (kept inside the coin), then a small star sparkling on its rim
-function G.glint(dl, cx, cy, r, t)
-    if t < 0 or t > 0.9 then return; end
-    local s2 = 0.70710678;
-    if t < 0.55 then
-        local p = -1.3 * r + (t / 0.55) * 2.6 * r;                   -- (where the band is, along the diagonal)
-        local w = r * 0.40;
-        for k = -w, w, 1 do
-            local s = p + k;
-            if math.abs(s) < r then
-                local h = math.sqrt(r * r - s * s) * 0.96;
-                local a = 0.80 * (1 - math.abs(k) / w) ^ 1.4;
-                local mx, my = cx + s * s2, cy - s * s2;            -- (the band runs bottom-left to top-right)
-                dl:AddLine({ mx - h * s2, my - h * s2 }, { mx + h * s2, my + h * s2 }, G.col(1, 0.97, 0.80, a), 1.2);
-            end
-        end
-    end
-    local st = (t - 0.35) / 0.55;                                    -- (the star: grows, then fades)
-    if st > 0 and st < 1 then
-        local a = math.sin(st * math.pi);
-        local sx, sy = cx + r * 0.55, cy - r * 0.62;
-        local L, w_ = r * 0.80 * a, r * 0.13 * a;
-        local c = G.col(1, 1, 0.92, 0.95 * a);
-        dl:AddTriangleFilled({ sx, sy - L }, { sx + w_, sy }, { sx - w_, sy }, c);
-        dl:AddTriangleFilled({ sx, sy + L }, { sx - w_, sy }, { sx + w_, sy }, c);
-        dl:AddTriangleFilled({ sx - L, sy }, { sx, sy - w_ }, { sx, sy + w_ }, c);
-        dl:AddTriangleFilled({ sx + L, sy }, { sx, sy + w_ }, { sx, sy - w_ }, c);
-        dl:AddCircleFilled({ sx, sy }, w_ * 1.6, G.col(1, 1, 1, 0.9 * a), 12);
-    end
-end
 function G.draw()
     local name = '';
     pcall(function() name = AshitaCore:GetMemoryManager():GetParty():GetMemberName(0) or ''; end);
@@ -255,7 +223,7 @@ function G.draw()
     imgui.PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
     local flags = bit.bor(ImGuiWindowFlags_NoDecoration, ImGuiWindowFlags_NoBackground, ImGuiWindowFlags_NoSavedSettings,
         ImGuiWindowFlags_NoMove, ImGuiWindowFlags_NoFocusOnAppearing, ImGuiWindowFlags_NoNav);
-    if imgui.Begin('##yunaloot_goblin', true, flags) then
+    if imgui.Begin('##yunaloot_moogle', true, flags) then
         local x0, y0 = imgui.GetCursorScreenPos();
         imgui.InvisibleButton('##yunaloot_btn', { w, h });
         local hov, act = imgui.IsItemHovered(), imgui.IsItemActive();
@@ -279,25 +247,10 @@ function G.draw()
         local hw, hh = w / 2 * k, h / 2 * k;
         local dl = imgui.GetWindowDrawList();
         local tx = G.texture(Y.mode == 'lot' and 'lot' or (Y.mode == 'pass' and 'pass' or 'off'), w);
-        local lit = Y.mode == 'lot';
-        dl:PushClipRect({ 0, 0 }, { sw, sh }, false);                -- (a sparkle may reach past the goblin's box)
-        local ang, py = 0, cy;                                       -- (Auto lot: the goblin bobs up and down and tilts a little, grinning,
-        if lit then                                                  --  waiting for loot - no glow: the user didn't like it, 2026-11-09)
-            py = cy - hh * 0.06 * (0.5 + 0.5 * math.sin(now * 2 * math.pi / 1.6));
-            ang = 0.06 * math.sin(now * 2 * math.pi / 3.2);
-        end
-        local ca, sa = math.cos(ang), math.sin(ang);
-        local function at(lx, ly) return { cx + lx * ca - ly * sa, py + lx * sa + ly * ca }; end   -- (a point of the picture, from its middle)
-        if tx then
+        dl:PushClipRect({ 0, 0 }, { sw, sh }, false);                -- (the tooltip may reach past the moogle's box)
+        if tx then                                                   -- (no animation for now - the user will pick one later, 2026-11-09)
             local a = (Y.mode == 'off') and 0.85 or 1;
-            dl:AddImageQuad(tx.ptr, at(-hw, -hh), at(hw, -hh), at(hw, hh), at(-hw, hh), { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 }, G.col(1, 1, 1, a));
-        end
-        if lit then
-            local t = now % 2.8;                                     -- (the coins glint, one after the other, every 2.8 s)
-            for i, e in ipairs(G.EYES) do
-                local p = at(e[1] * hw * 2 - hw, e[2] * hh * 2 - hh);
-                G.glint(dl, p[1], p[2], e[3] * hw * 2, t - (i - 1) * 0.18);
-            end
+            dl:AddImage(tx.ptr, { cx - hw, cy - hh }, { cx + hw, cy + hh }, { 0, 0 }, { 1, 1 }, G.col(1, 1, 1, a));
         end
         if imgui.IsItemClicked(1) then                               -- (right click: the settings panel, or closed again)
             G.panel = not G.panel;
@@ -434,7 +387,7 @@ function G.pill(dl, id, x, y, w, h, label, pick)
     G.unpush(on);
     return clk;
 end
--- The settings panel (right click the goblin): which mode, the goblin's size, its place back to start
+-- The settings panel (right click the moogle): which mode, the moogle's size, its place back to start
 function G.panel_draw(sw, sh, gw, gh)
     local cfg = G.cfg;
     local tw_, th_ = G.size('title', 'YunaLoot');
@@ -538,9 +491,9 @@ ashita.events.register('command', 'yunaloot_cmd', function(e)
     local sub = (args[2] or ''):lower();
     if sub == 'lot' or sub == 'pass' or sub == 'off' then
         G.set(sub);
-    elseif sub == 'settings' then                                    -- (/yloot settings: the panel, as a right click on the goblin)
+    elseif sub == 'settings' then                                    -- (/yloot settings: the panel, as a right click on the moogle)
         G.panel = not G.panel;
-    elseif sub == 'size' and tonumber(args[3]) then                  -- (/yloot size 40..200: the goblin's width in pixels)
+    elseif sub == 'size' and tonumber(args[3]) then                  -- (/yloot size 40..200: the moogle's width in pixels)
         G.cfg.size = math.max(40, math.min(200, math.floor(tonumber(args[3]))));
         settings.save();
         msg('Goblin size: ' .. G.cfg.size);
